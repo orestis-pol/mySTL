@@ -1,0 +1,245 @@
+/*
+ * Copyright (c) 2011, Orestis Polychroniou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *    1. Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright owner nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OWNER ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+
+/*  
+ *  ADT stack
+ *  Implemented using linked lists
+ *  Part of the my_STL project
+ *  http://www.di.uoa.gr/~std06176/stl
+ *  Report bugs at std06176@di.uoa.gr
+ */
+
+
+#ifndef MY_STL_STACK
+#define MY_STL_STACK
+
+#include "stltools"
+
+namespace my_stl {
+
+/* Required operators for class T:
+ *  - copy constructor
+ */
+
+/*** ADT stack class ***/
+
+template <class T>
+class stack {
+	private:
+		struct node {
+			T data;
+			node *next;
+			node(const T&, node*);
+			~node(void);
+		};
+		node *top_ptr;
+		unsigned int size_var;
+	public:
+		stack(void);
+		stack(const stack<T>&);
+		stack<T>& operator = (const stack<T>&);
+		~stack(void);
+		bool empty(void) const;
+		unsigned int size(void) const;
+		stack<T>& clear(void);
+		stack<T>& push(const T&);
+		stack<T>& pop(void);
+		T& top(void);
+		const T& top(void) const;
+		stack<T>& swap(stack<T>&);
+};
+
+
+
+/*** Internal operations ***/
+
+
+template <class T>
+stack<T>::node::node(const T& d, node *n = 0):
+	data(d),
+	next(n) {}
+
+
+template <class T>
+stack<T>::node::~node(void) {}
+
+
+
+/*** Operations ***/
+
+
+template <class T>
+stack<T>::stack(void):
+	top_ptr(0),
+	size_var(0) {}
+
+
+template <class T>
+stack<T>::stack(const stack& clone):
+	size_var(clone.size_var) {
+	node *ptr, *clone_ptr = clone.top_ptr;
+	if (!clone_ptr) top_ptr = 0;
+	else {
+		try {
+			ptr = new node(clone_ptr->data);
+		} catch (std::bad_alloc&) {
+			throw overflow();
+		}
+		top_ptr = ptr;
+		while ((clone_ptr = clone_ptr->next)) {
+			try {
+				ptr->next = new node(clone_ptr->data);
+			} catch (std::bad_alloc&) {
+				clear();
+				throw overflow();
+			} catch (...) {
+				clear();
+				throw;
+			}
+			ptr = ptr->next;
+		}
+	}	
+}
+
+
+template <class T>
+stack<T>& stack<T>::operator = (const stack& clone) {
+	node *ptr, *clone_ptr, *temp;
+	if (&clone == this) return *this;
+	clear();
+	if (!(clone_ptr = clone.top_ptr)) return *this;
+	try {
+		ptr = new node(clone_ptr->data);
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	top_ptr = ptr;
+	while ((clone_ptr = clone_ptr->next)) {
+		try {
+			ptr->next = new node(clone_ptr->data);
+		} catch (std::bad_alloc&) {
+			clear();
+			throw overflow();
+		} catch (...) {
+			clear();
+			throw;
+		}
+		ptr = ptr->next;
+	}
+	size_var = clone.size_var;
+	return *this;
+}
+
+
+template <class T>
+stack<T>::~stack(void) {
+	clear();
+}
+
+
+template <class T>
+bool stack<T>::empty(void) const {
+	return !size_var;
+}
+
+
+template <class T>
+unsigned int stack<T>::size(void) const {
+	return size_var;
+}
+
+
+template <class T>
+stack<T>& stack<T>::clear(void) {
+	node *temp, *ptr = top_ptr;
+	while (ptr) {
+		temp = ptr;
+		ptr = ptr->next;
+		delete temp;
+	}
+	top_ptr = 0;
+	size_var = 0;
+	return *this;
+}
+
+
+template <class T>
+stack<T>& stack<T>::push(const T& data) {
+	node *temp;
+	try {
+		temp = new node(data, top_ptr);
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	top_ptr = temp;
+	size_var++;
+	return *this;
+}
+
+
+template <class T>
+stack<T>& stack<T>::pop(void) {
+	node *temp = top_ptr;
+	if (!top_ptr) throw underflow();
+	top_ptr = top_ptr->next;
+	delete temp;
+	size_var--;
+	return *this;
+}
+
+
+template <class T>
+T& stack<T>::top(void) {
+	if (!top_ptr) throw underflow();
+	return top_ptr->data;
+}
+
+
+template <class T>
+const T& stack<T>::top(void) const {
+	if (!top_ptr) throw underflow();
+	return top_ptr->data;
+}
+
+
+template <class T>
+stack<T>& stack<T>::swap(stack<T>& param) {
+	unsigned int ti;
+	node *t = top_ptr;
+	top_ptr = param.top_ptr;
+	param.top_ptr = t;
+	ti = size_var;
+	size_var = param.size_var;
+	param.size_var = ti;
+	return *this;
+}
+
+}
+
+#endif

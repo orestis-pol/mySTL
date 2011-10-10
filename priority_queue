@@ -1,0 +1,376 @@
+/*
+ * Copyright (c) 2011, Orestis Polychroniou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *    1. Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright owner nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OWNER ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+
+/*  
+ *  ADT priority queue
+ *  Implemented using fibonacci heap
+ *  Part of the my_STL project
+ *  http://www.di.uoa.gr/~std06176/stl
+ *  Report bugs at std06176@di.uoa.gr
+ */
+
+
+#ifndef MY_STL_PRIORITY_QUEUE
+#define MY_STL_PRIORITY_QUEUE
+
+#include "stltools"
+
+namespace my_stl {
+
+/* Required operators for class T:
+ *  - copy constructor
+ *  - order function (< is default)
+ */
+
+/*** ADT queue class ***/
+
+template <class T, class L = less<T> >
+class priority_queue {
+	private:
+		L less;
+		struct node {
+			T data;
+			unsigned char degree;
+			node *right;
+			node *down;
+			node(const T&, node*);
+			node(const node&);
+			~node(void);
+			inline void link(node*);
+		};
+		node *start;
+		node *end;
+		node *min;
+		node **pstack;
+		unsigned int size_var;
+		void tcopy(node**, node*);
+	public:
+		priority_queue(void);
+		priority_queue(const L&);
+		priority_queue(const priority_queue<T,L>&);
+		priority_queue<T,L>& operator = (const priority_queue<T,L>&);
+		~priority_queue(void);
+		bool empty(void) const;
+		unsigned int size(void) const;
+		priority_queue<T,L>& clear(void);
+		priority_queue<T,L>& push(const T&);
+		priority_queue<T,L>& pop(void);
+		const T& top(void) const;
+		priority_queue<T,L>& merge(priority_queue<T,L>&);
+		priority_queue<T,L>& swap(priority_queue<T,L>&);
+};
+
+
+
+/*** Internal operations ***/
+
+
+template <class T, class L>
+priority_queue<T,L>::node::node(const T& d, node *r = 0):
+	data(d), degree(0), right(r), down(0) {}
+
+
+template <class T, class L>
+priority_queue<T,L>::node::node(const node& c):
+	data(c.data), degree(0), right(0), down(0) {}
+
+
+template <class T, class L>
+priority_queue<T,L>::node::~node(void) {}
+
+
+template <class T, class L>
+inline void priority_queue<T,L>::node::link(node* p) {
+	p->right = down;
+	down = p;
+	degree++;
+}
+
+
+template <class T, class L>
+void priority_queue<T,L>::tcopy(node **p, node *s) {
+	for (;;) {
+		*p = new node(*s);
+		if (s->down) tcopy(&((*p)->down), s->down);
+		if (!s->right) return;
+		s = s->right;
+		p = &((*p)->right);
+	}
+}
+
+
+
+/*** Operations ***/
+
+
+template <class T, class L>
+priority_queue<T,L>::priority_queue(void):
+	start(0),
+	end(0),
+	min(0),
+	size_var(0) {
+	unsigned int l = sizeof(unsigned int)*8;
+	node **s, **e;
+	try {
+		pstack = new node* [l];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	for (s = pstack, e = &s[l] ; s != e ; ++s) 
+		*s = 0;
+}
+
+
+template <class T, class L>
+priority_queue<T,L>::priority_queue(const L& lcmp):
+	less(lcmp),
+	start(0),
+	end(0),
+	min(0),
+	size_var(0) {
+	unsigned int l = sizeof(unsigned int)*8;
+	node **s, **e;
+	try {
+		pstack = new node* [l];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	for (s = pstack, e = &s[l] ; s != e ; ++s) 
+		*s = 0;
+}
+
+
+template <class T, class L>
+priority_queue<T,L>::priority_queue(const priority_queue<T,L>& clone):
+	less(clone.less),
+	size_var(clone.size_var) {
+	unsigned int l = sizeof(unsigned int)*8;
+	node *p, *q, **s, **e;
+	try {
+		pstack = new node* [l];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	for (s = pstack, e = &s[l] ; s != e ; ++s) 
+		*s = 0;
+	if (!clone.start) start = end = min = 0;
+	else
+		try {
+			tcopy(&start, clone.start);
+		} catch (std::bad_alloc&) {
+			clear();
+			delete[] pstack;
+		}
+	p = start;
+	q = clone.start;
+	if (q == clone.min) min = p;
+	while (p->right) {
+		p = p->right;
+		q = q->right;
+		if (q == clone.min) min = p;
+	}
+	end = p;
+}
+
+
+template <class T, class L>
+priority_queue<T,L>& priority_queue<T,L>::operator = (const priority_queue<T,L>& clone) {
+	node *p, *q;
+	if (this == &clone) return *this;
+	clear();
+	if (!clone.start) return *this;
+	try {
+		tcopy(&start, clone.start);
+	} catch (std::bad_alloc&) {
+		clear();
+		delete[] pstack;
+	}
+	p = start;
+	q = clone.start;
+	if (q == clone.min) min = p;
+	while (p->right) {
+		p = p->right;
+		q = q->right;
+		if (q == clone.min) min = p;
+	}
+	end = p;
+	size_var = clone.size_var;
+	return *this;
+}
+
+
+template <class T, class L>
+priority_queue<T,L>::~priority_queue(void) {
+	clear();
+	delete[] pstack;
+}
+
+
+template <class T, class L>
+bool priority_queue<T,L>::empty(void) const {
+	return !size_var;
+}
+
+
+template <class T, class L>
+unsigned int priority_queue<T,L>::size(void) const {
+	return size_var;
+}
+
+
+template <class T, class L>
+priority_queue<T,L>& priority_queue<T,L>::clear(void) {
+	node *p, **s = pstack;
+	*s = start;
+	for (;;)
+		if (!*s) {
+			if (s == pstack) break;
+			s--;
+		} else {
+			p = *s;
+			*s = p->right;
+			if (p->down) *(++s) = p->down;
+			delete p;
+		}
+	start = end = min = 0;
+	return *this;
+}
+
+
+template <class T, class L>
+priority_queue<T,L>& priority_queue<T,L>::push(const T& d) {
+	node *t;
+	try {
+		t = new node(d, start);
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	if (!start) start = end = min = t;
+	else {
+		start = t;
+		if (less(d, min->data))
+			min = t;
+	}
+	size_var++;
+	return *this;
+}
+
+
+template <class T, class L>
+priority_queue<T,L>& priority_queue<T,L>::pop(void) {
+	node **s, **e, *p, *q, *r;
+	if (!start) throw underflow();
+	if (size_var == 1) {
+		delete start;
+		start = end = min = 0;
+		size_var = 0;
+		return *this;
+	}
+	end->right = min->down;
+	p = start;
+	do {
+		r = p->right;
+		if (p == min) continue;
+		s = &pstack[p->degree];
+		while (*s) {
+			q = *s;
+			if (less(p->data, q->data))
+				p->link(q);
+			else {
+				q->link(p);
+				p = q;
+			}
+			*(s++) = 0;
+		}
+		*s = p;
+	} while ((p = r));
+	delete min;
+	for (s = pstack ;; ++s)
+		if (*s) {
+			start = end = min = *s;
+			*s++ = 0;
+			break;
+		}
+	for (e = &pstack[sizeof(unsigned int)*8] ; s != e ; ++s)
+		if (*s) {
+			end->right = *s;
+			end = *s;
+			if (less(end->data, min->data))
+				min = end;
+			*s = 0;
+		}
+	end->right = 0;
+	size_var--;
+	return *this;
+}
+
+
+template <class T, class L>
+const T& priority_queue<T,L>::top(void) const {
+	if (!min) throw underflow();
+	return min->data;
+}
+
+
+template <class T, class L>
+priority_queue<T,L>& priority_queue<T,L>::merge(priority_queue<T,L>& param) {
+	if (!param.start) return *this;
+	if (!start) return swap(param);
+	param.end->right = start;
+	start = param.start;
+	if (less(param.min->data, min->data))
+		min = param.min;
+	param.start = param.end = param.min = 0;
+	size_var += param.size_var;
+	param.size = 0;
+	return *this;
+}
+
+
+template <class T, class L>
+priority_queue<T,L>& priority_queue<T,L>::swap(priority_queue<T,L>& param) {
+	unsigned int ti;
+	node *t = start;
+	start = param.start;
+	param.start = t;
+	t = end;
+	end = param.end;
+	param.end = t;
+	t = min;
+	min = param.min;
+	param.min = t;
+	ti = size_var;
+	size_var = param.size_var;
+	param.size_var = ti;
+	return *this;
+}
+
+}
+
+#endif

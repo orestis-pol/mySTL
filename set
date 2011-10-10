@@ -1,0 +1,639 @@
+/*
+ * Copyright (c) 2011, Orestis Polychroniou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *    1. Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright owner nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OWNER ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+
+/*
+ *  ADT set
+ *  Implemented using AVL trees
+ *  Part of the my_STL project
+ *  http://www.di.uoa.gr/~std06176/stl
+ *  Report bugs at std06176@di.uoa.gr
+ */
+
+
+#ifndef MY_STL_SET
+#define MY_STL_SET
+
+#include "stltools"
+
+namespace my_stl {
+
+/* Required operators for class T:
+ *  - copy constructor
+ *  - operator ==
+ *  - operator <
+ */
+
+/*** ADT set class ***/
+
+template <class T, class L = less<T> >
+class set {
+	private:
+		L less;
+		struct node {
+			T data;
+			int balance:2;
+			unsigned int size:30;
+			node *left;
+			node *right;
+			node(const T&);
+			node(const node&);
+			~node(void);
+		};
+		node *root;
+		node ***pstack;
+		bool *dstack;
+		node *tnode;
+		void tcopy(node**, node*);
+		inline unsigned int tsize(node*) const;
+		inline void AVL_LL_rotate(node**);
+		inline void AVL_RR_rotate(node**);
+		inline void AVL_LR_rotate(node**);
+		inline void AVL_RL_rotate(node**);
+		void tmerge(node*);
+	public:
+		set(void);
+		set(const L&);
+		set(const set&);
+		set<T,L>& operator = (const set&);
+		~set(void);
+		bool empty(void) const;
+		unsigned int size(void) const;
+		set<T,L>& clear(void);
+		bool find(const T&) const;
+		unsigned int count(const T&) const;
+		unsigned int search(const T&) const;
+		unsigned int approximate_search(const T&) const;
+		const T& at(unsigned int) const;
+		set<T,L>& insert(const T&);
+		set<T,L>& remove(const T&);
+		set<T,L>& extract(unsigned int);
+		set<T,L>& merge(set<T,L>&);
+		set<T,L>& swap(set<T,L>&);
+};
+
+
+
+/*** Internal operations ***/
+
+
+template <class T, class L>
+set<T,L>::node::node(const T& d):
+	data(d), balance(0), size(1), left(0), right(0) {}
+
+
+template <class T, class L>
+set<T,L>::node::node(const node& c):
+	data(c.data), balance(c.balance),
+	size(c.size), left(0), right(0) {}
+
+
+template <class T, class L>
+set<T,L>::node::~node(void) {}
+
+
+template <class T, class L>
+inline unsigned int set<T,L>::tsize(node *p) const {
+	return (p ? p->size : 0);
+}
+
+
+template <class T, class L>
+void set<T,L>::tcopy(node **p, node *s) {
+	for (;;) {
+		*p = new node(*s);
+		if (s->left) tcopy(&((*p)->left), s->left);
+		if (!s->right) return;
+		s = s->right;
+		p = &((*p)->right);
+	}
+}
+
+
+template <class T, class L>
+inline void set<T,L>::AVL_LL_rotate(node** p) {
+	node *t = *p;
+	*p = t->left;
+	t->left = (*p)->right;
+	(*p)->right = t;
+	t->balance = -(++(*p)->balance);
+	t->size = tsize(t->left)+tsize(t->right)+1;
+	(*p)->size = (*p)->left->size+t->size+1;
+}
+
+
+template <class T, class L>
+inline void set<T,L>::AVL_RR_rotate(node** p) {
+	node *t = *p;
+	*p = t->right;
+	t->right = (*p)->left;
+	(*p)->left = t;
+	t->balance = -(--(*p)->balance);
+	t->size = tsize(t->left)+tsize(t->right)+1;
+	(*p)->size = (*p)->right->size+t->size+1;
+}
+
+
+template <class T, class L>
+inline void set<T,L>::AVL_LR_rotate(node** p) {
+	node *t = *p, *l = t->left;
+	*p = l->right;
+	l->right = (*p)->left;
+	t->left = (*p)->right;
+	(*p)->right = t;
+	(*p)->left = l;
+	if ((*p)->balance != 1) {
+		l->balance = 0;
+		t->balance = -(*p)->balance;
+	} else {
+		l->balance = -1;
+		t->balance = 0;
+	}
+	(*p)->balance = 0;
+	t->size = tsize(t->left)+tsize(t->right)+1;
+	l->size = tsize(l->left)+tsize(l->right)+1;
+	(*p)->size = l->size+t->size+1;
+}
+
+
+template <class T, class L>
+inline void set<T,L>::AVL_RL_rotate(node** p) {
+	node *t = *p, *l = t->right;
+	*p = l->left;
+	l->left = (*p)->right;
+	t->right = (*p)->left;
+	(*p)->left = t;
+	(*p)->right = l;
+	if ((*p)->balance != -1) {
+		l->balance = 0;
+		t->balance = -(*p)->balance;
+	} else {
+		l->balance = 1;
+		t->balance = 0;
+	}
+	(*p)->balance = 0;
+	t->size = tsize(t->left)+tsize(t->right)+1;
+	l->size = tsize(l->left)+tsize(l->right)+1;
+	(*p)->size = l->size+t->size+1;
+}
+
+
+template <class T, class L>
+void set<T,L>::tmerge(node *p) {
+	node *l, *r;
+	do {
+		p->balance = 0;
+		p->size = 1;
+		l = p->left;
+		r = p->right;
+		p->left = p->right = 0;
+		tnode = p;
+		insert(tnode->data);
+		if (l) tmerge(l);
+	} while ((p = r));
+}
+
+
+
+/*** Operations ***/
+
+
+template <class T, class L>
+set<T,L>::set(void):
+	root(0), tnode(0) {
+	try {
+		pstack = new node**[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	try {
+		dstack = new bool[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		delete[] pstack;
+		throw overflow();
+	} catch (...) {
+		delete[] pstack;
+		throw;
+	}
+}
+
+
+template <class T, class L>
+set<T,L>::set(const L& lcmp):
+	less(lcmp), root(0), tnode(0) {
+	try {
+		pstack = new node**[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	try {
+		dstack = new bool[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		delete[] pstack;
+		throw overflow();
+	} catch (...) {
+		delete[] pstack;
+		throw;
+	}
+}
+
+
+template <class T, class L>
+set<T,L>::set(const set& clone):
+	less(clone.less), root(0), tnode(0) {
+	try {
+		pstack = new node**[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	try {
+		dstack = new bool[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		delete[] pstack;
+		throw overflow();
+	} catch (...) {
+		delete[] pstack;
+		throw;
+	}
+	if (clone.root)
+		try {
+			tcopy(&root, clone.root);
+		} catch (std::bad_alloc&) {
+			clear();
+			delete[] pstack;
+			delete[] dstack;
+			throw overflow();
+		} catch (...) {
+			clear();
+			delete[] pstack;
+			delete[] dstack;
+			throw;
+		}
+}
+
+
+template <class T, class L>
+set<T,L>& set<T,L>::operator = (const set& clone) {
+	if (&clone == this) return *this;
+	clear();
+	if (clone.root)
+		try {
+			tcopy(&root, clone.root);
+		} catch (std::bad_alloc&) {
+			clear();
+			throw overflow();
+		} catch (...) {
+			clear();
+			throw;
+		}
+	return *this;
+}
+
+
+template <class T, class L>
+set<T,L>::~set(void) {
+	delete[] dstack;
+	clear();
+	delete[] pstack;
+}
+
+
+template <class T, class L>
+bool set<T,L>::empty(void) const {
+	return !root;
+}
+
+
+template <class T, class L>
+unsigned int set<T,L>::size(void) const {
+	return (root ? root->size : 0);
+}
+
+
+template <class T, class L>
+set<T,L>& set<T,L>::clear(void) {
+	node ***s = pstack, **p;
+	if (!root) return *this;
+	*(++s) = &root;
+	while (s != pstack) {
+		p = *s;
+		if ((*p)->left) 
+			*(++s) = &((*p)->left);
+		else if ((*p)->right) 
+			*(++s) = &((*p)->right);
+		else {
+			delete *p;
+			*p = 0;
+			s--;
+		}
+	}
+	root = 0;
+	return *this;
+}
+
+
+template <class T, class L>
+bool set<T,L>::find(const T& d) const {
+	node *p = root;
+	while (p)
+		if (less(d, p->data)) p = p->left;
+		else if (less(p->data, d)) p = p->right;
+		else return true;
+	return false;
+}
+
+
+template <class T, class L>
+unsigned int set<T,L>::count(const T& d) const {
+	return find(d) ? 1 : 0;
+}
+
+
+template <class T, class L>
+unsigned int set<T,L>::search(const T& d) const {
+	node *p = root;
+	unsigned int o = 1;
+	while (p)
+		if (less(d, p->data)) p = p->left;
+		else if (less(p->data, d)) {
+			o += tsize(p->left)+1;
+			p = p->right;
+		} else break;
+	return (p ? tsize(p->left) + o : 0);
+}
+
+
+template <class T, class L>
+unsigned int set<T,L>::approximate_search(const T& d) const {
+	node *p = root;
+	unsigned int o = 1;
+	while (p)
+		if (less(d, p->data)) p = p->left;
+		else if (less(p->data, d)) {
+			o += tsize(p->left)+1;
+			p = p->right;
+		} else break;
+	return o + (p ? tsize(p->left) : 0);
+}
+
+
+template <class T, class L>
+const T& set<T,L>::at(unsigned int a) const {
+	node *p = root;
+	unsigned int o = 1, l;
+	if (!p || !a || a > p->size) throw offbounds();
+	for (l = tsize(p->left) ; a != o+l ; l = tsize(p->left))
+		if (a < o+l) p = p->left;
+		else {
+			o += l+1;
+			p = p->right;
+		}
+	return p->data;
+}
+
+
+template <class T, class L>
+set<T,L>& set<T,L>::insert(const T& d) {
+	node ***s = pstack, **p = &root;
+	bool *b = dstack;
+	while (*p) {
+		*(++s) = p;
+		if ((*(++b) = (d < (*p)->data))) {
+			(*p)->size++;
+			p = &((*p)->left);
+		} else if ((*p)->data < d) {
+			(*p)->size++;
+			p = &((*p)->right);
+		} else {
+			while (--s != pstack)
+				(**s)->size--;
+			return *this;
+		}
+	}
+//	if (tnode) *p = tnode;
+//	else
+	//	try {
+			*p = new node(d);
+	//	} catch (std::bad_alloc&) {
+	//		throw overflow();
+	//	}
+	while (s != pstack) {
+		p = *s;
+		if (*b) {
+			if ((*p)->balance == -1) {
+				if ((*p)->left->balance != 1)
+					AVL_LL_rotate(p);
+				else
+					AVL_LR_rotate(p);
+				return *this;
+			}
+			if (!--(*p)->balance)
+				return *this;
+		} else {
+			if ((*p)->balance == 1) {
+				if ((*p)->right->balance != -1)
+					AVL_RR_rotate(p);
+				else 
+					AVL_RL_rotate(p);
+				return *this;
+			}
+			if (!++(*p)->balance)
+				return *this;
+		}
+		s--;
+		b--;
+	}
+	return *this;
+}
+
+
+template <class T, class L>
+set<T,L>& set<T,L>::remove(const T& d) {
+	node ***s = pstack, **p = &root, *t;
+	bool *b = dstack;
+	while (*p) {
+		*(++s) = p;
+		if ((*(++b) = less(d, (*p)->data)))
+			p = &((*p)->left);
+		else if (less((*p)->data, d))
+			p = &((*p)->right);
+		else break;
+	}
+	if (!(*p)) throw underflow();
+	if (!(*p)->left) {
+		t = *p;
+		*p = (*p)->right;
+		delete t;
+		s--;
+		b--;
+	} else if (!(*p)->right) {
+		t = *p;
+		*p = (*p)->left;
+		delete t;
+		s--;
+		b--;
+	} else {
+		node **r = p, ***w = s;
+		p = &((*p)->right);
+		while ((*p)->left) {
+			*(++s) = p;
+			*(++b) = true;
+			p = &((*p)->left);
+		}
+		t = *p;
+		*p = (*p)->right;
+		t->balance = (*r)->balance;
+		t->size = (*r)->size;
+		t->left = (*r)->left;
+		t->right = (*r)->right;
+		delete *r;
+		*r = t;
+		*(w+1) = &(t->right);
+	}
+	while (s != pstack) {
+		p = *s--;
+		(*p)->size--;
+		if (*b--) {
+			if ((*p)->balance == 1) {
+				if ((*p)->right->balance != -1) {
+					AVL_RR_rotate(p);
+					if ((*p)->balance) break;
+				} else AVL_RL_rotate(p);
+			} else if (++(*p)->balance) break;
+		} else {
+			if ((*p)->balance == -1) {
+				if ((*p)->left->balance != 1) {
+					AVL_LL_rotate(p);
+					if ((*p)->balance) break;
+				} else AVL_LR_rotate(p);
+			} else if (--(*p)->balance) break;
+		}
+	}
+	while (s != pstack) {
+		p = *s--;
+		(*p)->size--;
+	}
+	return *this;
+}
+
+
+template <class T, class L>
+set<T,L>& set<T,L>::extract(unsigned int a) {
+	node ***s = pstack, **p = &root, *t;
+	bool *b = dstack;
+	unsigned int o = 1, l;
+	if (!root || !a || a > root->size) throw offbounds();
+	for (;;) {
+		l = tsize((*p)->left);
+		*(++s) = p;
+		if ((*(++b) = (a < o+l)))
+			p = &((*p)->left);
+		else if (a != o+l) {
+			o += l+1;
+			p = &((*p)->right);
+		}
+		else break;
+	}
+	if (!(*p)->left) {
+		t = *p;
+		*p = (*p)->right;
+		delete t;
+		b--;
+		s--;
+	} else if (!(*p)->right) {
+		t = *p;
+		*p = (*p)->left;
+		delete t;
+		b--;
+		s--;
+	} else {
+		node **r = p, ***w = s+1;
+		p = &((*p)->right);
+		while ((*p)->left) {
+			*(++s) = p;
+			*(++b) = true;
+			p = &((*p)->left);
+		}
+		t = *p;
+		*p = (*p)->right;
+		t->balance = (*r)->balance;
+		t->size = (*r)->size;
+		t->left = (*r)->left;
+		t->right = (*r)->right;
+		delete *r;
+		*r = t;
+		*w = &(t->right);
+	}
+	while (s != pstack) {
+		p = *s--;
+		(*p)->size--;
+		if (*b--) {
+			if ((*p)->balance == 1) {
+				if ((*p)->right->balance != -1) {
+					AVL_RR_rotate(p);
+					if ((*p)->balance) break;
+				} else AVL_RL_rotate(p);
+			} else if (++(*p)->balance) break;
+		} else {
+			if ((*p)->balance == -1) {
+				if ((*p)->left->balance != 1) {
+					AVL_LL_rotate(p);
+					if ((*p)->balance) break;
+				} else AVL_LR_rotate(p);
+			} else if (--(*p)->balance) break;
+		}
+	}
+	while (s != pstack) {
+		p = *s--;
+		(*p)->size--;
+	}
+	return *this;
+}
+
+
+template <class T, class L>
+set<T,L>& set<T,L>::merge(set<T,L>& param) {
+	if (!param.root) return *this;
+	if (!root) return swap(param);
+	tmerge(param.root);
+	param.root = tnode = 0;
+	return *this;
+}
+
+
+template <class T, class L>
+set<T,L>& set<T,L>::swap(set<T,L>& param) {
+	node *t = root;
+	root = param.root;
+	param.root = t;
+	return *this;
+}
+
+}
+
+#endif

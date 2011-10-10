@@ -1,0 +1,287 @@
+/*
+ * Copyright (c) 2011, Orestis Polychroniou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *    1. Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright owner nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OWNER ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+
+/*  
+ *  ADT queue
+ *  Implemented using linked lists
+ *  Part of the my_STL project
+ *  http://www.di.uoa.gr/~std06176/stl
+ *  Report bugs at std06176@di.uoa.gr
+ */
+
+
+#ifndef MY_STL_QUEUE
+#define MY_STL_QUEUE
+
+#include "stltools"
+
+namespace my_stl {
+
+/* Required operators for class T:
+ *  - copy constructor
+ */
+
+/*** ADT queue class ***/
+
+template <class T>
+class queue {
+	private:
+		struct node {
+			T data;
+			node *next;
+			node(const T&);
+			~node(void);
+		};
+		node *front_ptr;
+		node *back_ptr;
+		unsigned int size_var;
+	public:
+		queue(void);
+		queue(const queue<T>&);
+		queue<T>& operator = (const queue<T>&);
+		~queue(void);
+		bool empty(void) const;
+		unsigned int size(void) const;
+		queue<T>& clear(void);
+		queue<T>& push(const T&);
+		queue<T>& pop(void);
+		T& front(void);
+		const T& front(void) const;
+		T& back(void);
+		const T& back(void) const;
+		queue<T>& append(queue<T>&);
+		queue<T>& swap(queue<T>&);
+};
+
+
+
+/*** Internal operations ***/
+
+
+template <class T>
+queue<T>::node::node(const T& d):
+	data(d), next(0) {}
+
+
+template <class T>
+queue<T>::node::~node(void) {}
+
+
+
+/*** Operations ***/
+
+
+template <class T>
+queue<T>::queue(void):
+	front_ptr(0), back_ptr(0), size_var(0) {}
+
+
+template <class T>
+queue<T>::queue(const queue& clone) {
+	node *ptr, *clone_ptr = clone.front_ptr;
+	if (!clone_ptr) front_ptr = back_ptr = 0;
+	else {
+		try {
+			ptr = new node(clone_ptr->data);
+		} catch (std::bad_alloc&) {
+			throw overflow();
+		}
+		front_ptr = ptr;
+		while ((clone_ptr = clone_ptr->next)) {
+			try {
+				ptr->next = new node(clone_ptr->data);
+			} catch (std::bad_alloc&) {
+				clear();
+				throw overflow();
+			} catch (...) {
+				clear();
+				throw;
+			}
+			ptr = ptr->next;
+		}
+		back_ptr = ptr;
+	}
+	size_var = clone.size_var;
+}
+
+
+template <class T>
+queue<T>& queue<T>::operator = (const queue& clone) {
+	node *ptr, *clone_ptr, *temp;
+	if (&clone == this) return *this;
+	clear();
+	if (!(clone_ptr = clone.front_ptr)) return *this;
+	try {
+		ptr = new node(clone_ptr->data);
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	front_ptr = ptr;
+	while ((clone_ptr = clone_ptr->next)) {
+		try {
+			ptr->next = new node(clone_ptr->data);
+		} catch (std::bad_alloc&) {
+			clear();
+			throw overflow();
+		} catch (...) {
+			clear();
+			throw;
+		}
+		ptr = ptr->next;
+	}
+	back_ptr = ptr;
+	size_var = clone.size_var;
+	return *this;
+}
+
+
+template <class T>
+queue<T>::~queue(void) {
+	clear();
+}
+
+
+template <class T>
+bool queue<T>::empty(void) const {
+	return !size_var;
+}
+
+
+template <class T>
+unsigned int queue<T>::size(void) const {
+	return size_var;
+}
+
+
+template <class T>
+queue<T>& queue<T>::clear(void) {
+	node *temp, *ptr=front_ptr;
+	while (ptr) {
+		temp = ptr;
+		ptr = ptr->next;
+		delete temp;
+	}
+	front_ptr = 0;
+	back_ptr = 0;
+	size_var = 0;
+	return *this;
+}
+
+
+template <class T>
+queue<T>& queue<T>::push(const T& data) {
+	node *temp;
+	try {
+		temp = new node(data);
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	if (!back_ptr) front_ptr = temp;
+	else back_ptr->next = temp;
+	back_ptr = temp;
+	size_var++;
+	return *this;
+}
+
+
+template <class T>
+queue<T>& queue<T>::pop(void) {
+	node *temp = front_ptr;
+	if (!front_ptr) throw underflow();
+	front_ptr = front_ptr->next;
+	delete temp;
+	if (!front_ptr) back_ptr = 0;
+	size_var--;
+	return *this;
+}
+
+
+template <class T>
+T& queue<T>::front(void) {
+	if (!front_ptr) throw underflow();
+	return front_ptr->data;
+}
+
+
+template <class T>
+const T& queue<T>::front(void) const {
+	if (!front_ptr) throw underflow();
+	return front_ptr->data;
+}
+
+
+template <class T>
+T& queue<T>::back(void) {
+	if (!back_ptr) throw underflow();
+	return back_ptr->data;
+}
+
+
+template <class T>
+const T& queue<T>::back(void) const {
+	if (!back_ptr) throw underflow();
+	return back_ptr->data;
+}
+
+
+template <class T>
+queue<T>& queue<T>::append(queue<T>& param) {
+	if (!param.front_ptr) return *this;
+	if (!front_ptr) {
+		front_ptr = param.front_ptr;
+		back_ptr = param.back_ptr;
+	} else {
+		back_ptr->next = param.front_ptr;
+		back_ptr = param.back_ptr;
+	}
+	param.front_ptr = param.back_ptr = 0;
+	size_var = param.size_var;
+	param.size_var = 0;
+	return *this;
+}
+
+
+template <class T>
+queue<T>& queue<T>::swap(queue<T>& param) {
+	unsigned int ti;
+	node *t = front_ptr;
+	front_ptr = param.front_ptr;
+	param.front_ptr = t;
+	t = back_ptr;
+	back_ptr = param.back_ptr;
+	param.back_ptr = t;
+	ti = size_var;
+	size_var = param.size_var;
+	param.size_var = ti;
+	return *this;
+}
+
+}
+
+#endif

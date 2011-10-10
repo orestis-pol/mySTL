@@ -1,0 +1,253 @@
+/*
+ * Copyright (c) 2011, Orestis Polychroniou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *    1. Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright owner nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OWNER ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+
+/*
+ *  Auxiliary global file for stl
+ *  Includes exception classes
+ *  Part of the my_STL project
+ *  http://www.di.uoa.gr/~std06176/stl
+ *  Report bugs at std06176@di.uoa.gr
+ */
+
+
+#ifndef MY_STL_GLOBAL
+#define MY_STL_GLOBAL
+
+#include <exception>
+#include <string>
+
+namespace my_stl {
+
+/*** General comparison functions ***/
+
+/* Less (<) */
+
+template <class T>
+class less {
+	public:
+		inline bool operator() (const T& a, const T& b) const {
+			return a < b;
+		}
+};
+
+/* Equal (==) */
+
+template <class T>
+class equal {
+	public:
+		inline bool operator() (const T& a, const T& b) const {
+			return a == b;
+		}
+};
+
+/* Greater (>) */
+
+template <class T>
+class greater {
+	public:
+		inline bool operator() (const T& a, const T& b) const {
+			return a > b;
+		}
+};
+
+/* Less or equal (<=) */
+
+template <class T>
+class less_equal {
+	public:
+		inline bool operator() (const T& a, const T& b) const {
+			return a <= b;
+		}
+};
+
+/* Greater or equal (>=) */
+
+template <class T>
+class greater_equal {
+	public:
+		inline bool operator() (const T& a, const T& b) const {
+			return a >= b;
+		}
+};
+
+/* Always true */
+
+template <class T>
+class yes {
+	public:
+		inline bool operator() (const T& a) const {
+			return true;
+		}
+};
+
+/* Always false */
+
+template <class T>
+class no {
+	public:
+		inline bool operator() (const T& a) const {
+			return false;
+		}
+};
+
+
+/*** Exceptions ***/
+
+/* Overflow */
+
+class overflow : public std::exception {
+	public:
+		overflow(void) {}
+		virtual const char* what(void) const throw() {
+			return "STL: Overflow";
+		}
+};
+
+/* Underflow */
+
+class underflow : public std::exception {
+	public:
+		underflow(void) {}
+		virtual const char* what(void) const throw() {
+			return "STL: Underflow";
+		}
+};
+
+/* Bound error */
+
+class offbounds : public std::exception {
+	public:
+		offbounds(void) {}
+		virtual const char* what(void) const throw() {
+			return "STL: Out of bounds";
+		}
+};
+
+
+/*** Hash functions ***/
+
+/* Generic class */
+
+template <class T>
+class hash {
+	public:
+		inline unsigned int operator () (const T& data) const {
+			unsigned int h = 5381;
+			const char *p = (const char*) &data;
+			const char *e = ((const char*) &data) + sizeof(T);
+			while (p != e)
+				h += (h << 5) + *p++;
+			return h;
+		}
+};
+
+/* String specialization */
+
+template <>
+class hash <std::string> {
+	public:
+		inline unsigned int operator () (const std::string& data) const {
+			unsigned int h = 5381;
+			const char *p = data.data();
+			const char *e = p + data.size();
+			while (p != e)
+				h += (h << 5) + *p++;
+			return h;
+		}
+};
+
+/* Int specialization */
+
+template <>
+class hash <int> {
+	public:
+		inline unsigned int operator () (const int& data) const {
+			unsigned int h = data;
+			h -= (h << 6);
+			h ^= (h >> 17);
+			h -= (h << 9);
+			h ^= (h << 4);
+			h -= (h << 3);
+			h ^= (h << 10);
+			h ^= (h >> 15);
+			return h;
+		}
+};
+
+template <>
+class hash <unsigned int> {
+	public:
+		inline unsigned int operator () (const unsigned int& data) const {
+			unsigned int h = data;
+			h -= (h << 6);
+			h ^= (h >> 17);
+			h -= (h << 9);
+			h ^= (h << 4);
+			h -= (h << 3);
+			h ^= (h << 10);
+			h ^= (h >> 15);
+			return h;
+		}
+};
+
+/* Long specialization */
+
+template <>
+class hash <long> {
+	public:
+		inline unsigned int operator() (const long& data) const {
+			unsigned long h = data;
+			h = (~h) + (h << 18);
+			h ^= (h >> 31);
+			h += (h << 2) + (h << 4);
+			h ^= (h >> 11);
+			h += (h << 6);
+			h ^= (h >> 22);
+			return (unsigned int) h;
+		}
+};
+
+template <>
+class hash <unsigned long> {
+	public:
+		inline unsigned int operator() (const unsigned long& data) const {
+			unsigned long h = data;
+			h = (~h) + (h << 18);
+			h ^= (h >> 31);
+			h += (h << 2) + (h << 4);
+			h ^= (h >> 11);
+			h += (h << 6);
+			h ^= (h >> 22);
+			return (unsigned int) h;
+		}
+};
+
+}
+
+#endif

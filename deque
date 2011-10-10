@@ -1,0 +1,321 @@
+/*
+ * Copyright (c) 2011, Orestis Polychroniou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *    1. Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright owner nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OWNER ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+
+/*  
+ *  ADT deque
+ *  Implemented using linked lists
+ *  Part of the my_STL project
+ *  http://www.di.uoa.gr/~std06176/stl
+ *  Report bugs at std06176@di.uoa.gr
+ */
+
+
+#ifndef MY_STL_DEQUE
+#define MY_STL_DEQUE
+
+#include "stltools"
+
+namespace my_stl {
+
+/* Required operators for class T:
+ *  - copy constructor
+ */
+
+/*** ADT deque class ***/
+
+template <class T>
+class deque {
+	private:
+		struct node {
+			T data;
+			node *next;
+			node *prev;
+			node(const T&, node*, node*);
+			~node(void);
+		};
+		node *front_ptr;
+		node *back_ptr;
+		unsigned int size_var;
+	public:
+		deque(void);
+		deque(const deque<T>&);
+		deque<T>& operator = (const deque<T>&);
+		~deque(void);
+		bool empty(void) const;
+		unsigned int size(void) const;
+		deque<T>& clear(void);
+		deque<T>& push_front(const T&);
+		deque<T>& push_back(const T&);
+		deque<T>& pop_front(void);
+		deque<T>& pop_back(void);
+		T& front(void);
+		const T& front(void) const;
+		T& back(void);
+		const T& back(void) const;
+		deque<T>& append(deque<T>&);
+		deque<T>& swap(deque<T>&);
+};
+
+
+
+/*** Internal operations ***/
+
+
+template <class T>
+deque<T>::node::node(const T& d, node *n, node *p):
+	data(d), next(n), prev(p) {}
+
+
+template <class T>
+deque<T>::node::~node(void) {}
+
+
+
+/*** Operations ***/
+
+
+template <class T>
+deque<T>::deque(void):
+	front_ptr(0),
+	back_ptr(0),
+	size_var(0) {}
+
+
+template <class T>
+deque<T>::deque(const deque& clone):
+	size_var(clone.size_var) {
+	node *ptr, *clone_ptr = clone.front_ptr;
+	if (!clone_ptr) front_ptr = back_ptr = 0;
+	else {
+		try {
+			ptr = new node(clone_ptr->data, 0, 0);
+		} catch (std::bad_alloc&) {
+			throw overflow();
+		}
+		front_ptr = ptr;
+		while ((clone_ptr = clone_ptr->next)) {
+			try {
+				ptr = new node(clone_ptr->data, 0, ptr);
+			} catch (std::bad_alloc&) {
+				clear();
+				throw overflow();
+			} catch (...) {
+				clear();
+				throw;
+			}
+			ptr->prev->next = ptr;
+		}
+		back_ptr = ptr;
+	}
+}
+
+
+template <class T>
+deque<T>& deque<T>::operator = (const deque& clone) {
+	node *ptr, *clone_ptr, *temp;
+	if (&clone == this) return *this;
+	clear();
+	if (!(clone_ptr = clone.front_ptr)) return *this;
+	try {
+		ptr = new node(clone_ptr->data, 0, 0);
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	front_ptr = ptr;
+	while ((clone_ptr = clone_ptr->next)) {
+		try {
+			ptr = new node(clone_ptr->data, 0, ptr);
+		} catch (std::bad_alloc&) {
+			clear();
+			throw overflow();
+		} catch (...) {
+			clear();
+			throw;
+		}
+		ptr->prev->next = ptr;
+	}
+	back_ptr = ptr;
+	size_var = clone.size_var;
+	return *this;
+}
+
+
+template <class T>
+deque<T>::~deque(void) {
+	clear();
+}
+
+
+template <class T>
+bool deque<T>::empty(void) const {
+	return !size_var;
+}
+
+
+template <class T>
+unsigned int deque<T>::size(void) const {
+	return size_var;
+}
+
+
+template <class T>
+deque<T>& deque<T>::clear(void) {
+	node *temp, *ptr = front_ptr;
+	while (ptr) {
+		temp = ptr;
+		ptr = ptr->next;
+		delete temp;
+	}
+	front_ptr = back_ptr = 0;
+	size_var = 0;
+	return *this;
+}
+
+
+template <class T>
+deque<T>& deque<T>::push_front(const T& data) {
+	node *temp;
+	try {
+		temp = new node(data, front_ptr, 0);
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	if (front_ptr) front_ptr->prev = temp;
+	else back_ptr = temp;
+	front_ptr = temp;
+	size_var++;
+	return *this;
+}
+
+
+template <class T>
+deque<T>& deque<T>::push_back(const T& data) {
+	node *temp;
+	try {
+		temp = new node(data, 0, back_ptr);
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	if (back_ptr) back_ptr->next = temp;
+	else front_ptr = temp;
+	back_ptr = temp;
+	size_var++;
+	return *this;
+}
+
+
+template <class T>
+deque<T>& deque<T>::pop_front(void) {
+	node *temp = front_ptr;
+	if (!front_ptr) throw underflow();
+	front_ptr = front_ptr->next;
+	delete temp;
+	if (front_ptr) front_ptr->prev = 0;
+	else back_ptr = 0;
+	size_var--;
+	return *this;
+}
+
+
+template <class T>
+deque<T>& deque<T>::pop_back(void) {
+	node *temp = back_ptr;
+	if (!back_ptr) throw underflow();
+	back_ptr = back_ptr->prev;
+	delete temp;
+	if (back_ptr) back_ptr->next = 0;
+	else front_ptr = 0;
+	size_var--;
+	return *this;
+}
+
+
+template <class T>
+T& deque<T>::front(void) {
+	if (!front_ptr) throw underflow();
+	return front_ptr->data;
+}
+
+
+template <class T>
+const T& deque<T>::front(void) const {
+	if (!front_ptr) throw underflow();
+	return front_ptr->data;
+}
+
+
+template <class T>
+T& deque<T>::back(void) {
+	if (!back_ptr) throw underflow();
+	return back_ptr->data;
+}
+
+
+template <class T>
+const T& deque<T>::back(void) const {
+	if (!back_ptr) throw underflow();
+	return back_ptr->data;
+}
+
+
+template <class T>
+deque<T>& deque<T>::append(deque<T>& param) {
+	if (!param.front_ptr) return *this;
+	if (!front_ptr) {
+		front_ptr = param.front_ptr;
+		back_ptr = param.back_ptr;
+	} else {
+		back_ptr->next = param.front_ptr;
+		back_ptr = param.back_ptr;
+	}
+	param.front_ptr = param.back_ptr = 0;
+	size_var = param.size_var;
+	param.size_var = 0;
+	return *this;
+}
+
+
+template <class T>
+deque<T>& deque<T>::swap(deque<T>& param) {
+	unsigned int ti;
+	node *t = front_ptr;
+	front_ptr = param.front_ptr;
+	param.front_ptr = t;
+	t = back_ptr;
+	back_ptr = param.back_ptr;
+	param.back_ptr = t;
+	ti = size_var;
+	size_var = param.size_var;
+	param.size_var = ti;
+	return *this;
+}
+
+}
+
+#endif

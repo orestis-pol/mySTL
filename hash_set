@@ -1,0 +1,652 @@
+/*
+ * Copyright (c) 2011, Orestis Polychroniou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *    1. Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright owner nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OWNER ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+
+/*
+ *  ADT hash set
+ *  Implemented using hash table
+ *  Part of the my_STL project
+ *  http://www.di.uoa.gr/~std06176/stl
+ *  Report bugs at std06176@di.uoa.gr
+ */
+
+
+#ifndef MY_STL_HASH_SET
+#define MY_STL_HASH_SET
+
+#include "stltools"
+
+namespace my_stl {
+
+/* Required operators for class T:
+ *  - copy constructor
+ *  - equal function (== is default)
+ *  - hash function
+ */
+
+/*** ADT set class ***/
+
+template <class T, class H = hash<T>, class E = equal<T> >
+class hash_set {
+	private:
+		H hash;
+		E equal;
+		struct node {
+			T data;
+			node *next;
+			node(const T&, node*);
+			~node(void);
+		};
+		node **table;
+		unsigned int pos;
+		static const unsigned int primes[];
+		unsigned int size_var;
+		void extend(unsigned int);
+	public:
+		hash_set(void);
+		hash_set(const H&);
+		hash_set(const H&, const E&);
+		hash_set(const hash_set&);
+		hash_set<T,H,E>& operator = (const hash_set&);
+		~hash_set(void);
+		bool empty(void) const;
+		unsigned int size(void) const;
+		hash_set<T,H,E>& clear(void);
+		hash_set<T,H,E>& reserve(unsigned int);
+		bool find(const T&) const;
+		unsigned int count(const T&) const;
+		hash_set<T,H,E>& insert(const T&);
+		hash_set<T,H,E>& remove(const T&);
+		hash_set<T,H,E>& merge(hash_set<T,H,E>&);
+		hash_set<T,H,E>& swap(hash_set<T,H,E>&);
+		template <class L> hash_set<T,H,E>& perform(L&);
+		template <class L> hash_set<T,H,E>& perform(const L&);
+		template <class L> hash_set<T,H,E>& remove_if(L&);
+		template <class L> hash_set<T,H,E>& remove_if(const L&);
+		template <class L> hash_set<T,H,E>& split_if(hash_set<T,H,E>&, L&);
+		template <class L> hash_set<T,H,E>& split_if(hash_set<T,H,E>&, const L&);
+};
+
+
+
+/*** Internal operations ***/
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>::node::node(const T& d, node *n):
+	data(d), next(n) {}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>::node::~node(void) {}
+
+
+template <class T, class H, class E>
+inline void hash_set<T,H,E>::extend(unsigned int npos) {
+	unsigned int o, c;
+	node **s, **e, **n, *p, *d, **ntable;
+	if (npos < 0 || npos > 27) return;
+	o = primes[npos];
+	c = size_var;
+	ntable = new node* [o];
+	for (s = ntable, e = &ntable[o] ; s != e ; ++s)
+		*s = 0;
+	for (s = table, e = &table[primes[pos]] ; s != e && c ; ++s) {
+		p = *s;
+		while (p) {
+			d = p;
+			p = p->next;
+			n = &ntable[hash(d->data) % o];
+			d->next = *n;
+			*n = d;
+			c--;
+		}
+	}
+	delete[] table;
+	table = ntable;
+	pos = npos;
+}
+
+
+template <class T, class H, class E>
+const unsigned int hash_set<T,H,E>::primes[28] = {
+	13, 31, 61, 127, 251, 509, 1021, 2039, 4093, 8191, 16381, 32749,
+	65521, 131071, 262139, 524287, 1048573, 2097143, 4194301,
+	8388593, 16777213, 33554393, 67108859, 134217689,
+	268435399, 536870909, 1073741789, 2147483647
+};
+
+
+
+/*** Operations ***/
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>::hash_set(void):
+	pos(0),
+	size_var(0) {
+	node **s, **e;
+	try {
+		table = new node* [primes[0]];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	for (s = table, e = &table[primes[0]] ; s != e ; ++s)
+		*s = 0;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>::hash_set(const H& hashf):
+	hash(hashf),
+	pos(0),
+	size_var(0) {
+	node **s, **e;
+	try {
+		table = new node* [primes[0]];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	for (s = table, e = &table[primes[0]] ; s != e ; ++s)
+		*s = 0;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>::hash_set(const H& hashf, const E& ecmp):
+	hash(hashf),
+	equal(ecmp),
+	pos(0),
+	size_var(0) {
+	node **s, **e;
+	try {
+		table = new node* [primes[0]];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	for (s = table, e = &table[primes[0]] ; s != e ; ++s)
+		*s = 0;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>::hash_set(const hash_set& clone):
+	hash(clone.hash),
+	equal(clone.equal),
+	pos(clone.pos), size_var(clone.size_var) {
+	node **s, **e, **c, *p, *t;
+	unsigned int m;
+	try {
+		table = new node* [primes[pos]];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	for (m = 0, s = table, e = &table[primes[pos]],
+	     c = clone.table ; s != e ; ++s, ++c) {
+		if (!(p = *c)) *s = 0;
+		else
+			try {
+				node *n = *s = new node(p->data, 0);
+				m++;
+				while ((p = p->next)) {
+					n->next = new node(p->data, 0);
+					n = n->next;
+					m++;
+				}	
+			} catch (std::bad_alloc&) {
+				for (e = &table[-1] ; s != e && m ; --s)
+					for (p = *s ; p ; t = p, p = p->next) {
+						delete t;
+						m--;
+					}
+				delete[] table;
+				throw overflow();
+			} catch (...) {
+				for (e = &table[-1] ; s != e && m ; --s)
+					for (p = *s ; p ; t = p, p = p->next) {
+						delete t;
+						m--;
+					}
+				delete[] table;
+				throw;
+			}
+	}
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>& hash_set<T,H,E>::operator = (const hash_set& clone) {
+	node **s, **e, **c, *p, *t;
+	unsigned int m = size_var;
+	if (&clone == this) return *this;
+	for (s = table, e = &table[primes[pos]] ; s != e && m ; ++s)
+		if ((p = *s)) {
+			do {
+				t = p;
+				p = p->next;
+				delete t;
+			} while (p && --m);
+			*s = 0;
+		}
+	size_var = 0;
+	if (pos < clone.pos || pos > clone.pos+1)
+		try {
+			extend(clone.pos);
+		} catch (std::bad_alloc&) {
+			throw overflow();
+		}
+	for (m = 0, s = table, e = &table[primes[pos]],
+	     c = clone.table ; s != e ; ++s, ++c) {
+		if ((p = *c))
+			try {
+				node *n = *s = new node(p->data, 0);
+				m++;
+				while ((p = p->next)) {
+					n->next = new node(p->data, 0);
+					n = n->next;
+					m++;
+				}	
+			} catch (std::bad_alloc&) {
+				for (e = &table[-1] ; s != e && m ; --s)
+					if ((p = *s)) {
+						do {
+							t = p;
+							p = p->next;
+							delete t;
+						} while (p && --m);
+						*s = 0;
+					}
+				delete[] table;
+				throw overflow();
+			} catch (...) {
+				for (e = &table[-1] ; s != e && m ; --s)
+					if ((p = *s)) {
+						do {
+							t = p;
+							p = p->next;
+							delete t;
+						} while (p && --m);
+						*s = 0;
+					}
+				delete[] table;
+				throw;
+			}
+	}
+	size_var = clone.size_var;
+	return *this;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>::~hash_set(void) {
+	node **s, **e, *p, *t;
+	unsigned int m = size_var;
+	for (s = table, e = &table[primes[pos]] ; s != e && m ; ++s) {
+		p = *s;
+		while (p) {
+			t = p;
+			p = p->next;
+			delete t;
+			m--;
+		}
+	}
+	delete[] table;
+}
+
+
+template <class T, class H, class E>
+bool hash_set<T,H,E>::empty(void) const {
+	return !size_var;
+}
+
+
+template <class T, class H, class E>
+unsigned int hash_set<T,H,E>::size(void) const {
+	return size_var;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>& hash_set<T,H,E>::clear(void) {
+	node **s, **e, *p, *t;
+	unsigned int m = size_var;
+	for (s = table, e = &table[primes[pos]] ; s != e && m ; ++s)
+		if ((p = *s)) {
+			do {
+				t = p;
+				p = p->next;
+				delete t;
+			} while (p && --m);
+			*s = 0;
+		}
+	size_var = 0;
+	try {
+		extend(0);
+	} catch (std::bad_alloc&) {}
+	return *this;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>& hash_set<T,H,E>::reserve(unsigned int nsize) {
+	int npos = pos;
+	while (nsize > (primes[npos] / 10) * 13)
+		npos++;
+	if (npos != pos)
+		try {
+			extend(npos);
+		} catch (std::bad_alloc&) {}
+	return *this;
+}
+
+
+template <class T, class H, class E>
+bool hash_set<T,H,E>::find(const T& d) const {
+	node *p = table[hash(d)%primes[pos]];
+	while (p) {
+		if (equal(p->data, d)) 
+			return true;
+		p = p->next;
+	}
+	return false;
+}
+
+
+template <class T, class H, class E>
+unsigned int hash_set<T,H,E>::count(const T& d) const {
+	return find(d) ? 1 : 0;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>& hash_set<T,H,E>::insert(const T& d) {
+	unsigned int o = primes[pos];
+	node **n = &table[hash(d) % o];
+	node *p = *n;
+	while (p) {
+		if (equal(p->data, d))
+			return *this;
+		p = p->next;
+	}
+	try {
+		p = new node(d, *n);
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	*n = p;
+	if (++size_var > (o / 10) * 13)
+		try {
+			extend(pos + 1);
+		} catch (std::bad_alloc&) {}
+	return *this;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>& hash_set<T,H,E>::remove(const T& d) {
+	unsigned int o = primes[pos];
+	node **n = &table[hash(d) % o];
+	node *p = *n, *pp = 0;
+	while (p && !equal(p->data, d)) {
+		pp = p;
+		p = p->next;
+	}
+	if (!p) throw underflow();
+	if (pp) pp->next = p->next;
+	else *n = p->next;
+	delete p;
+	if (--size_var < (o / 20) * 13)
+		try {
+			extend(pos - 1);
+		} catch (std::bad_alloc&) {}
+	return *this;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>& hash_set<T,H,E>::merge(hash_set<T,H,E>& param) {
+	node **s, **e, **n, *t, *p, *np;
+	unsigned int c, m, o;
+	if (this == &param) return *this;
+	o = primes[pos];
+	for (c = pos ; size_var + param.size_var > (primes[c] / 10) * 13 ; ++c);
+	if (c != pos)
+		try {
+			extend(c);
+		} catch (std::bad_alloc&) {}
+	for (c = 0, m = param.size_var, s = param.table,
+	     e = &s[param.primes[param.pos]] ; s != e && m ; ++s) {
+		for (p = *s ; p ; --m) {
+			n = &table[hash(p->data) % o];
+			np = *n;
+			while (np && !equal(p->data, np->data))
+				np = np->next;
+			t = p;
+			p = p->next;
+			if (np) delete t;
+			else {
+				t->next = *n;
+				*n = t;
+				c++;
+			}
+		}
+		*s = 0;
+	}
+	size_var += c;
+	param.size_var = 0;
+	try {
+		param.extend(0);
+	} catch (std::bad_alloc&) {}
+	return *this;
+}
+
+
+template <class T, class H, class E>
+hash_set<T,H,E>& hash_set<T,H,E>::swap(hash_set<T,H,E>& param) {
+	unsigned int ti;
+	node **t = table;
+	table = param.table;
+	param.table = t;
+	ti = (unsigned int)pos;
+	pos = param.pos;
+	param.pos = (int)ti;
+	ti = size_var;
+	size_var = param.size_var;
+	param.size_var = ti;
+	return *this;
+}
+
+
+template <class T, class H, class E>
+template <class L>
+hash_set<T,H,E>& hash_set<T,H,E>::remove_if(L& fun) {
+	node **s, **e, *t, *p, *pp;
+	unsigned int d, m;
+	for (d = 0, m = size_var, s = table,
+	     e = &s[primes[pos]] ; s != e && m ; ++s)
+		for (pp = 0, p = *s ; p ; --m)
+			if (fun(p->data)) {
+				t = p;
+				p = p->next;
+				if (!pp) *s = p;
+				else pp->next = p;
+				delete t;
+				d++;
+			} else {
+				pp = p;
+				p = p->next;
+			}
+	if (!d) return *this;
+	size_var -= d;
+	for (d = pos ; size_var < (primes[d] / 20) * 13 ; --d);
+	if (d != pos)
+		try {
+			extend(d);
+		} catch (std::bad_alloc&) {}
+	return *this;
+}
+
+
+template <class T, class H, class E>
+template <class L>
+hash_set<T,H,E>& hash_set<T,H,E>::remove_if(const L& fun) {
+	node **s, **e, *t, *p, *pp;
+	unsigned int d, m;
+	for (d = 0, m = size_var, s = table,
+	     e = &s[primes[pos]] ; s != e && m ; ++s)
+		for (pp = 0, p = *s ; p ; --m)
+			if (fun(p->data)) {
+				t = p;
+				p = p->next;
+				if (!pp) *s = p;
+				else pp->next = p;
+				delete t;
+				d++;
+			} else {
+				pp = p;
+				p = p->next;
+			}
+	if (!d) return *this;
+	size_var -= d;
+	for (d = pos ; size_var < (primes[d] / 20) * 13 ; --d);
+	if (d != pos)
+		try {
+			extend(d);
+		} catch (std::bad_alloc&) {}
+	return *this;
+}
+
+
+template <class T, class H, class E>
+template <class L>
+hash_set<T,H,E>& hash_set<T,H,E>::split_if(hash_set<T,H,E>& param, L& fun) {
+	node **s, **e, **n, *t, *p, *np, *pp;
+	unsigned int c, d, m, o, l;
+	bool x;
+	if (this == &param) return *this;
+	o = primes[param.pos];
+	l = (o / 10) * 13;
+	for (c = d = 0, m = size_var, x = true, s = table,
+	     e = &s[primes[pos]] ; s != e && m ; ++s)
+		for (pp = 0, p = *s ; p ; --m)
+			if (fun(p->data)) {
+				n = &param.table[hash(p->data) % o];
+				np = *n;
+				while (np && !equal(p->data, np->data))
+					np = np->next;
+				d++;
+				t = p;
+				p = p->next;
+				if (!pp) *s = p;
+				else pp->next = p;
+				if (np) delete t;
+				else {
+					t->next = *n;
+					*n = t;
+					c++;
+					if (x && c + param.size_var > l) {
+						try {
+							param.extend(param.pos + 1);
+						} catch (std::bad_alloc&) {
+							x = false;
+						}
+						o = primes[param.pos];
+						l = (o / 10) * 13;
+					}
+				}
+			} else {
+				pp = p;
+				p = p->next;
+			}
+	if (!d) return *this;
+	size_var -= d;
+	param.size_var += c;
+	for (d = pos ; size_var < (primes[d] / 20) * 13 ; --d);
+	if (d != pos)
+		try {
+			extend(d);
+		} catch (std::bad_alloc&) {}
+	return *this;
+}
+
+
+template <class T, class H, class E>
+template <class L>
+hash_set<T,H,E>& hash_set<T,H,E>::split_if(hash_set<T,H,E>& param, const L& fun) {
+	node **s, **e, **n, *t, *p, *np, *pp;
+	unsigned int c, d, m, o, l;
+	bool x;
+	if (this == &param) return *this;
+	o = primes[param.pos];
+	l = (o / 10) * 13;
+	for (c = d = 0, m = size_var, x = true, s = table,
+	     e = &s[primes[pos]] ; s != e && m ; ++s)
+		for (pp = 0, p = *s ; p ; --m)
+			if (fun(p->data)) {
+				n = &param.table[hash(p->data) % o];
+				np = *n;
+				while (np && !equal(p->data, np->data))
+					np = np->next;
+				d++;
+				t = p;
+				p = p->next;
+				if (!pp) *s = p;
+				else pp->next = p;
+				if (np) delete t;
+				else {
+					t->next = *n;
+					*n = t;
+					c++;
+					if (x && c + param.size_var > l) {
+						try {
+							param.extend(param.pos + 1);
+						} catch (std::bad_alloc&) {
+							x = false;
+						}
+						o = primes[param.pos];
+						l = (o / 10) * 13;
+					}
+				}
+			} else {
+				pp = p;
+				p = p->next;
+			}
+	if (!d) return *this;
+	size_var -= d;
+	param.size_var += c;
+	for (d = pos ; size_var < (primes[d] / 20) * 13 ; --d);
+	if (d != pos)
+		try {
+			extend(d);
+		} catch (std::bad_alloc&) {}
+	return *this;
+}
+
+}
+
+#endif

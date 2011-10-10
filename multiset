@@ -1,0 +1,778 @@
+/*
+ * Copyright (c) 2011, Orestis Polychroniou
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *    1. Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *    2. Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *    3. Neither the name of the copyright owner nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE OWNER ''AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+
+
+/*
+ *  ADT multiset
+ *  Implemented using AVL trees
+ *  Part of the my_STL project
+ *  http://www.di.uoa.gr/~std06176/stl
+ *  Report bugs at std06176@di.uoa.gr
+ */
+
+
+#ifndef MY_STL_MULTISET
+#define MY_STL_MULTISET
+
+#include "stltools"
+
+namespace my_stl {
+
+/* Required operators for class T:
+ *  - copy constructor
+ *  - order function (< is default)
+ */
+
+/*** ADT multiset class ***/
+
+template <class T, class L = less<T> >
+class multiset {
+	private:
+		L less;
+		struct inode {
+			T data;
+			inode *next;
+			inode(const T&);
+			inode(const inode&);
+			~inode(void);
+		};
+		struct node {
+			inode *beg;
+			inode *end;
+			int balance:2;
+			unsigned int size;
+			node *left;
+			node *right;
+			node(const T&);
+			node(const node&);
+			node(inode*);
+			~node(void);
+		};
+		node *root;
+		inode *tnode;
+		node ***pstack;
+		bool *dstack;
+		unsigned int unique_var;
+		void tcopy(node**, node*);
+		inline unsigned int tsize(node*) const;
+		inline void AVL_LL_rotate(node**);
+		inline void AVL_RR_rotate(node**);
+		inline void AVL_LR_rotate(node**);
+		inline void AVL_RL_rotate(node**);
+		void tmerge(node*);
+	public:
+		multiset(void);
+		multiset(const L&);
+		multiset(const multiset<T,L>&);
+		multiset<T,L>& operator = (const multiset<T,L>&);
+		~multiset(void);
+		bool empty(void) const;
+		unsigned int size(void) const;
+		unsigned int unique(void) const;
+		multiset<T,L>& clear(void);
+		bool find(const T&) const;
+		unsigned int count(const T&) const;
+		unsigned int search(const T&) const;
+		unsigned int approximate_search(const T&) const;
+		const T& at(unsigned int) const;
+		multiset<T,L>& insert(const T&);
+		multiset<T,L>& remove(const T&);
+		multiset<T,L>& extract(unsigned int);
+		multiset<T,L>& merge(multiset<T,L>&);
+		multiset<T,L>& swap(multiset<T,L>&);
+};
+
+
+
+/*** Internal operations ***/
+
+
+template <class T, class L>
+multiset<T,L>::inode::inode(const T& d):
+	data(d), next(0) {}
+
+
+template <class T, class L>
+multiset<T,L>::inode::inode(const inode& c):
+	data(c.data), next(0) {}
+
+
+template <class T, class L>
+multiset<T,L>::inode::~inode(void) {}
+
+
+template <class T, class L>
+multiset<T,L>::node::node(const T& d):
+	balance(0), size(1), left(0), right(0) {
+	beg = end = new inode(d);
+}
+
+
+template <class T, class L>
+multiset<T,L>::node::node(inode *i):
+	balance(0), size(1), left(0), right(0) {
+	beg = end = i;
+}
+
+
+template <class T, class L>
+multiset<T,L>::node::node(const node& c):
+	balance(c.balance), size(c.size), left(0), right(0) {
+	inode *t, *p = c.beg;
+	beg = end = new inode(*p);
+	while (p->next) {
+		p = p->next;
+		try {
+			end->next = new inode(*p);
+			end = end->next;
+		} catch (...) {
+			p = beg;
+			while (p) {
+				t = p;
+				p = p->next;
+				delete t;
+			}
+			throw;
+		}
+	}
+}
+
+
+template <class T, class L>
+multiset<T,L>::node::~node(void) {
+	inode *t, *p = beg;
+	while (p) {
+		t = p;
+		p = p->next;
+		delete t;
+	}
+}
+
+
+template <class T, class L>
+inline unsigned int multiset<T,L>::tsize(node *p) const {
+	return (p ? p->size : 0);
+}
+
+
+template <class T, class L>
+void multiset<T,L>::tcopy(node **p, node *s) {
+	for (;;) {
+		*p = new node(*s);
+		if (s->left) tcopy(&((*p)->left), s->left);
+		if (!s->right) return;
+		s = s->right;
+		p = &((*p)->right);
+	}
+}
+
+
+template <class T, class L>
+inline void multiset<T,L>::AVL_LL_rotate(node** p) {
+	int ts, ps;
+	node *t = *p;
+	*p = t->left;
+	ts = t->size-(*p)->size-tsize(t->right);
+	ps = (*p)->size-tsize((*p)->left)-tsize((*p)->right);
+	t->left = (*p)->right;
+	(*p)->right = t;
+	t->balance = -(++(*p)->balance);
+	t->size = tsize(t->left)+tsize(t->right)+ts;
+	(*p)->size = (*p)->left->size+t->size+ps;
+}
+
+
+template <class T, class L>
+inline void multiset<T,L>::AVL_RR_rotate(node** p) {
+	int ts, ps;
+	node *t = *p;
+	*p = t->right;
+	ts = t->size-(*p)->size-tsize(t->left);
+	ps = (*p)->size-tsize((*p)->left)-tsize((*p)->right);
+	t->right = (*p)->left;
+	(*p)->left = t;
+	t->balance = -(--(*p)->balance);
+	t->size = tsize(t->left)+tsize(t->right)+ts;
+	(*p)->size = (*p)->right->size+t->size+ps;
+}
+
+
+template <class T, class L>
+inline void multiset<T,L>::AVL_LR_rotate(node** p) {
+	int ts, ls, ps;
+	node *t = *p, *l = t->left;
+	*p = l->right;
+	ts = t->size-l->size-tsize(t->right);
+	ls = l->size-tsize(l->left)-(*p)->size;
+	ps = (*p)->size-tsize((*p)->left)-tsize((*p)->right);
+	l->right = (*p)->left;
+	t->left = (*p)->right;
+	(*p)->right = t;
+	(*p)->left = l;
+	if ((*p)->balance != 1) {
+		l->balance = 0;
+		t->balance = -(*p)->balance;
+	} else {
+		l->balance = -1;
+		t->balance = 0;
+	}
+	(*p)->balance = 0;
+	t->size = tsize(t->left)+tsize(t->right)+ts;
+	l->size = tsize(l->left)+tsize(l->right)+ls;
+	(*p)->size = l->size+t->size+ps;
+}
+
+
+template <class T, class L>
+inline void multiset<T,L>::AVL_RL_rotate(node** p) {
+	int ts, ls, ps;
+	node *t = *p, *l = t->right;
+	*p = l->left;
+	ts = t->size-tsize(t->left)-l->size;
+	ls = l->size-(*p)->size-tsize(l->right);
+	ps = (*p)->size-tsize((*p)->left)-tsize((*p)->right);
+	l->left = (*p)->right;
+	t->right = (*p)->left;
+	(*p)->left = t;
+	(*p)->right = l;
+	if ((*p)->balance != -1) {
+		l->balance = 0;
+		t->balance = -(*p)->balance;
+	} else {
+		l->balance = 1;
+		t->balance = 0;
+	}
+	(*p)->balance = 0;
+	t->size = tsize(t->left)+tsize(t->right)+ts;
+	l->size = tsize(l->left)+tsize(l->right)+ls;
+	(*p)->size = l->size+t->size+ps;
+}
+
+
+template <class T, class L>
+void multiset<T,L>::tmerge(node *p) {
+	node *t;
+	inode *i;
+	do {
+		i = p->beg;
+		p->beg = 0;
+		do {
+			tnode = i;
+			i = i->next;
+			tnode->next = 0;
+			insert(tnode->data);
+		} while (i);
+		if (p->left) tmerge(p->left);
+		t = p;
+		p = p->right;
+		delete t;
+	} while (p);
+}
+
+
+
+/*** Operations ***/
+
+
+template <class T, class L>
+multiset<T,L>::multiset(void):
+	root(0), tnode(0), unique_var(0) {
+	try {
+		pstack = new node**[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	try {
+		dstack = new bool[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		delete[] pstack;
+		throw overflow();
+	} catch (...) {
+		delete[] pstack;
+		throw;
+	}
+}
+
+
+template <class T, class L>
+multiset<T,L>::multiset(const L& lcmp):
+	less(lcmp), root(0), tnode(0), unique_var(0) {
+	try {
+		pstack = new node**[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	try {
+		dstack = new bool[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		delete[] pstack;
+		throw overflow();
+	} catch (...) {
+		delete[] pstack;
+		throw;
+	}
+}
+
+
+template <class T, class L>
+multiset<T,L>::multiset(const multiset& clone):
+	less(clone.less), root(0), tnode(0),
+	unique_var(clone.unique_var) {
+	try {
+		pstack = new node**[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		throw overflow();
+	}
+	try {
+		dstack = new bool[sizeof(unsigned int)*12];
+	} catch (std::bad_alloc&) {
+		delete[] pstack;
+		throw overflow();
+	} catch (...) {
+		delete[] pstack;
+		throw;
+	}
+	if (clone.root)
+		try {
+			tcopy(&root, clone.root);
+		} catch (std::bad_alloc&) {
+			clear();
+			delete[] pstack;
+			delete[] dstack;
+			throw overflow();
+		} catch (...) {
+			clear();
+			delete[] pstack;
+			delete[] dstack;
+			throw;
+		}
+}
+
+
+template <class T, class L>
+multiset<T,L>& multiset<T,L>::operator = (const multiset& clone) {
+	if (&clone == this) return *this;
+	clear();
+	if (clone.root)
+		try {
+			tcopy(&root, clone.root);
+		} catch (std::bad_alloc&) {
+			clear();
+			throw overflow();
+		} catch (...) {
+			clear();
+			throw;
+		}
+	unique_var = clone.unique_var;
+	return *this;
+}
+
+
+template <class T, class L>
+multiset<T,L>::~multiset(void) {
+	delete[] dstack;
+	clear();
+	delete[] pstack;
+}
+
+
+template <class T, class L>
+bool multiset<T,L>::empty(void) const {
+	return !root;
+}
+
+
+template <class T, class L>
+unsigned int multiset<T,L>::size(void) const {
+	return (root ? root->size : 0);
+}
+
+
+template <class T, class L>
+unsigned int multiset<T,L>::unique(void) const {
+	return unique_var;
+}
+
+
+template <class T, class L>
+multiset<T,L>& multiset<T,L>::clear(void) {
+	node ***s = pstack, **p;
+	if (!root) return *this;
+	*(++s) = &root;
+	while (s != pstack) {
+		p = *s;
+		if ((*p)->left) 
+			*(++s) = &((*p)->left);
+		else if ((*p)->right) 
+			*(++s) = &((*p)->right);
+		else {
+			delete *p;
+			*p = 0;
+			s--;
+		}
+	}
+	root = 0;
+	unique_var = 0;
+	return *this;
+}
+
+
+template <class T, class L>
+bool multiset<T,L>::find(const T& d) const {
+	node *p = root;
+	while (p)
+		if (less(d, p->beg->data)) p = p->left;
+		else if (less(p->beg->data, d)) p = p->right;
+		else return true;
+	return false;
+}
+
+
+template <class T, class L>
+unsigned int multiset<T,L>::count(const T& d) const {
+	node *p = root;
+	while (p)
+		if (less(d, p->beg->data)) p = p->left;
+		else if (less(p->beg->data, d)) p = p->right;
+		else return p->size-tsize(p->left)-tsize(p->right);
+	return 0;
+}
+
+
+template <class T, class L>
+unsigned int multiset<T,L>::search(const T& d) const {
+	node *p = root;
+	unsigned int o = 1;
+	while (p)
+		if (less(d, p->beg->data)) p = p->left;
+		else if (less(p->beg->data, d)) {
+			o += p->size-tsize(p->right);
+			p = p->right;
+		} else break;
+	return (p ? tsize(p->left) + o : 0);
+}
+
+
+template <class T, class L>
+unsigned int multiset<T,L>::approximate_search(const T& d) const {
+	node *p = root;
+	unsigned int o = 1;
+	while (p)
+		if (less(d, p->beg->data)) p = p->left;
+		else if (less(p->beg->data, d)) {
+			o += p->size-tsize(p->right);
+			p = p->right;
+		} else break;
+	return o + (p ? tsize(p->left) : 0);
+}
+
+
+template <class T, class L>
+const T& multiset<T,L>::at(unsigned int a) const {
+	node *p = root;
+	inode *i;
+	unsigned int o = 1, l, n;
+	if (!p || !a || a > p->size) throw offbounds();
+	for (;;) {
+		l = tsize(p->left);
+		n = p->size-l-tsize(p->right);
+		if (a < o+l) p = p->left;
+		else if (a >= o+l+n) {
+			o += l+n;
+			p = p->right;
+		} else break;
+	}
+	if (a == o+l+n-1)
+		return p->end->data;
+	i = p->beg;
+	for (a -= o+l ; a ; --a)
+		i = i->next;
+	return i->data;
+}
+
+
+template <class T, class L>
+multiset<T,L>& multiset<T,L>::insert(const T& d) {
+	node ***s = pstack, **p = &root;
+	bool *b = dstack;
+	while (*p) {
+		*(++s) = p;
+		if ((*(++b) = less(d, (*p)->beg->data)))
+			p = &((*p)->left);
+		else if (less((*p)->beg->data, d))
+			p = &((*p)->right);
+		else break;
+	}
+	if (*p) {
+		if (tnode) (*p)->end->next = tnode;
+		else
+			try {
+				(*p)->end->next = new inode(d);
+			} catch (std::bad_alloc&) {
+				throw overflow();
+			}
+		(*p)->end = (*p)->end->next;
+	} else {
+		if (tnode) *p = new node(tnode);
+		else
+			try {
+				*p = new node(d);
+			} catch (std::bad_alloc&) {
+				throw overflow();
+			}
+		while (s != pstack) {
+			p = *s--;
+			(*p)->size++;
+			if (*b--) {
+				if ((*p)->balance == -1) {
+					if ((*p)->left->balance != 1)
+						AVL_LL_rotate(p);
+					else
+						AVL_LR_rotate(p);
+					break;
+				}
+				if (!--(*p)->balance) break;
+			} else {
+				if ((*p)->balance == 1) {
+					if ((*p)->right->balance != -1)
+						AVL_RR_rotate(p);
+					else 
+						AVL_RL_rotate(p);
+					break;
+				}
+				if (!++(*p)->balance) break;
+			}
+		}
+		unique_var++;
+	}
+	while (s != pstack) {
+		p = *s--;
+		(*p)->size++;
+	}
+	return *this;
+}
+
+
+template <class T, class L>
+multiset<T,L>& multiset<T,L>::remove(const T& d) {
+	node ***s = pstack, **p = &root, *t, ***w;
+	bool *b = dstack;
+	unsigned int i, l;
+	while (*p) {
+		*(++s) = p;
+		if ((*(++b) = less(d, (*p)->beg->data)))
+			p = &((*p)->left);
+		else if (less((*p)->beg->data, d))
+			p = &((*p)->right);
+		else break;
+	}
+	if (!(*p)) throw underflow();
+	if (!(*p)->left) {
+		i = (*p)->size-tsize((*p)->right);
+		t = *p;
+		*p = (*p)->right;
+		delete t;
+		w = --s;
+		b--;
+	} else if (!(*p)->right) {
+		i = (*p)->size-(*p)->left->size;
+		t = *p;
+		*p = (*p)->left;
+		delete t;
+		w = --s;
+		b--;
+	} else {
+		node **r = p;
+		w = s;
+		i = (*p)->size-(*p)->left->size-(*p)->right->size;
+		p = &((*p)->right);
+		while ((*p)->left) {
+			*(++s) = p;
+			*(++b) = true;
+			p = &((*p)->left);
+		}
+		t = *p;
+		*p = (*p)->right;
+		l = t->size-tsize(*p);
+		t->balance = (*r)->balance;
+		t->size = (*r)->size;
+		t->left = (*r)->left;
+		t->right = (*r)->right;
+		delete *r;
+		*r = t;
+		*(w+1) = &(t->right);
+	}
+	while (s != pstack) {
+		if (s == w) l = i;
+		p = *s--;
+		(*p)->size -= l;
+		if (*b--) {
+			if ((*p)->balance == 1) {
+				if ((*p)->right->balance != -1) {
+					AVL_RR_rotate(p);
+					if ((*p)->balance) break;
+				} else AVL_RL_rotate(p);
+			} else if (++(*p)->balance) break;
+		} else {
+			if ((*p)->balance == -1) {
+				if ((*p)->left->balance != 1) {
+					AVL_LL_rotate(p);
+					if ((*p)->balance) break;
+				} else AVL_LR_rotate(p);
+			} else if (--(*p)->balance) break;
+		}
+	}
+	while (s != pstack) {
+		if (s == w) l = i;
+		p = *s--;
+		(*p)->size -= l;
+	}
+	unique_var--;
+	return *this;
+}
+
+
+template <class T, class L>
+multiset<T,L>& multiset<T,L>::extract(unsigned int a) {
+	node ***s = pstack, **p = &root, *t;
+	inode *i, *it;
+	bool *b = dstack;
+	unsigned int o = 1, l, n;
+	if (!root || !a || a > root->size) throw offbounds();
+	for (;;) {
+		l = tsize((*p)->left);
+		n = (*p)->size-l-tsize((*p)->right);
+		*(++s) = p;
+		if ((*(++b) = (a < o+l)))
+			p = &((*p)->left);
+		else if (a >= o+l+n) {
+			o += l+n;
+			p = &((*p)->right);
+		} else break;
+	}
+	if (n != 1) {
+		a -= o+l;
+		if (!a) {
+			it = (*p)->beg;
+			(*p)->beg = it->next;
+		} else {
+			i = (*p)->beg;
+			while (--a)
+				i = i->next;
+			it = i->next;
+			i->next = it->next;
+			if (it == (*p)->end)
+				(*p)->end = i;
+		}
+		delete it;
+	} else {
+		if (!(*p)->left) {
+			t = *p;
+			*p = (*p)->right;		
+			delete t;
+			b--;
+			s--;
+		} else if (!(*p)->right) {
+			t = *p;
+			*p = (*p)->left;
+			delete t;
+			b--;
+			s--;
+		} else {
+			node **r = p, ***w = s+1;
+			p = &((*p)->right);
+			while ((*p)->left) {
+				*(++s) = p;
+				*(++b) = true;
+				p = &((*p)->left);
+			}
+			t = *p;
+			*p = (*p)->right;
+			t->balance = (*r)->balance;
+			t->size = (*r)->size;
+			t->left = (*r)->left;
+			t->right = (*r)->right;
+			delete *r;
+			*r = t;
+			*w = &(t->right);
+		}
+		while (s != pstack) {
+			p = *s--;
+			(*p)->size--;
+			if (*b--) {
+				if ((*p)->balance == 1) {
+					if ((*p)->right->balance != -1) {
+						AVL_RR_rotate(p);
+						if ((*p)->balance) break;
+					} else AVL_RL_rotate(p);
+				} else if (++(*p)->balance) break;
+			} else {
+				if ((*p)->balance == -1) {
+					if ((*p)->left->balance != 1) {
+						AVL_LL_rotate(p);
+						if ((*p)->balance) break;
+					} else AVL_LR_rotate(p);
+				} else if (--(*p)->balance) break;
+			}
+		}
+		unique_var--;
+	}
+	while (s != pstack) {
+		p = *s--;
+		(*p)->size--;
+	}
+	return *this;
+}
+
+
+template <class T, class L>
+multiset<T,L>& multiset<T,L>::merge(multiset<T,L>& param) {
+	if (!param.root) return *this;
+	if (!root) return swap(param);
+	tmerge(param.root);
+	param.root = 0;
+	param.unique_var = 0;
+	tnode = 0;
+	return *this;
+}
+
+
+template <class T, class L>
+multiset<T,L>& multiset<T,L>::swap(multiset<T,L>& param) {
+	node *t = root;
+	unsigned int u = unique_var;
+	root = param.root;
+	unique_var = param.unique_var;
+	param.root = t;
+	param.unique_var = u;
+	return *this;
+}
+
+}
+
+#endif
